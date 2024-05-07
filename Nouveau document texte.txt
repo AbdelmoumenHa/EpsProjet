@@ -1,0 +1,814 @@
+import sys
+
+import subprocess
+
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QWidget, QVBoxLayout, QAction, QMenu
+
+from PyQt5.QtWidgets import QFileDialog, QTextEdit, QMessageBox, QLineEdit, QTableWidget, QTableWidgetItem
+
+from PyQt5.QtCore import Qt
+
+import win32com.client as win32
+
+
+
+def open_outlook_mail(subject, body, recipient):
+
+    try:
+
+        outlook = win32.Dispatch("Outlook.Application")
+
+        mail = outlook.CreateItem(0)  # Créer un nouvel e-mail
+
+        mail.Subject = subject  # Sujet de l'e-mail
+
+        mail.Body = body  # Corps de l'e-mail
+
+        mail.To = recipient  # Destinataire de l'e-mail
+
+        mail.Display()  # Afficher la fenêtre de composition d'e-mail
+
+        print("Application Outlook ouverte.")
+
+    except Exception as e:
+
+        print("Erreur lors de l'ouverture de l'application Outlook:", e)
+
+
+
+
+
+class MainWindow(QMainWindow):
+
+    def __init__(self):
+
+        super().__init__()
+
+
+
+        # Configuration de la fenêtre principale
+
+        self.setWindowTitle("Application")
+
+        self.setGeometry(200, 200, 300, 200)
+
+
+
+        # Création des éléments de l'interface utilisateur
+
+        self.label = QLabel("Synchronisation", self)
+
+        self.operation_button = QPushButton("Opération", self)
+
+        self.historique_button = QPushButton("Historique", self)
+
+
+
+        # Configuration des signaux et des slots
+
+        self.operation_button.clicked.connect(self.open_operation_window)
+
+        self.historique_button.clicked.connect(self.open_historique_window)
+
+
+
+        # Configuration du layout principal
+
+        layout = QVBoxLayout()
+
+        layout.addWidget(self.label)
+
+        layout.addWidget(self.operation_button)
+
+        layout.addWidget(self.historique_button)
+
+
+
+        # Configuration du widget central
+
+        central_widget = QWidget()
+
+        central_widget.setLayout(layout)
+
+        self.setCentralWidget(central_widget)
+
+
+
+        # Références aux fenêtres d'opération et d'historique
+
+        self.operation_window = None
+
+        self.historique_window = None
+
+
+
+    def open_operation_window(self):
+
+        if self.operation_window is None:
+
+            self.operation_window = OperationWindow()
+
+        self.operation_window.show()
+
+
+
+    def open_historique_window(self):
+
+        if self.historique_window is None:
+
+            self.historique_window = HistoriqueWindow()
+
+        self.historique_window.show()
+
+
+
+
+
+class OperationWindow(QWidget):
+
+    def __init__(self):
+
+        super().__init__()
+
+
+
+        # Configuration de la fenêtre d'opération
+
+        self.setWindowTitle("Opération")
+
+        self.setGeometry(300, 300, 300, 200)
+
+
+
+        # Création des éléments de l'interface utilisateur
+
+        self.label = QLabel("Fenêtre d'opération", self)
+
+        self.ajouter_button = QPushButton("Ajouter", self)
+
+        self.telecharger_button = QPushButton("Télécharger", self)
+
+        self.push_button = QPushButton("Push", self)
+
+
+
+        # Configuration du layout
+
+        layout = QVBoxLayout()
+
+        layout.addWidget(self.label)
+
+        layout.addWidget(self.ajouter_button)
+
+        layout.addWidget(self.telecharger_button)
+
+        layout.addWidget(self.push_button)
+
+        self.setLayout(layout)
+
+        self.telecharger_button.clicked.connect(self.open_Download_window)
+
+        self.ajouter_button.clicked.connect(self.open_commit_widget)
+
+        self.push_button.clicked.connect(self.open_push_widget)
+
+        self.download_window = None  # Ajout de la variable d'instance
+
+        self.commit_window = None
+
+        self.push_window = None
+
+
+
+    def open_Download_window(self):
+
+        if self.download_window is None:
+
+            self.download_window = DownloadWidget()
+
+        self.download_window.show()
+
+    
+
+    def open_commit_widget(self):
+
+        if self.commit_window is None:
+
+            self.commit_window = CommitWidget()
+
+        self.commit_window.show()
+
+    
+
+    def open_push_widget(self):
+
+        if self.push_window is None:
+
+            self.push_window = PushWidget()
+
+        self.push_window.show()
+
+
+
+
+
+class HistoriqueWindow(QWidget):
+
+    def __init__(self):
+
+        super().__init__()
+
+
+
+        # Configuration de la fenêtre d'historique
+
+        self.setWindowTitle("Historique")
+
+        self.setGeometry(400, 400, 600, 400)
+
+
+
+        # Création des éléments de l'interface utilisateur
+
+        self.table_widget = QTableWidget(self)
+
+        self.table_widget.setColumnCount(4)  # Nombre de colonnes
+
+
+
+        # Configurer les en-têtes de colonnes
+
+        headers = ["SHA", "Auteur", "Date", "Message"]
+
+        self.table_widget.setHorizontalHeaderLabels(headers)
+
+
+
+        # Configuration du layout
+
+        layout = QVBoxLayout()
+
+        layout.addWidget(self.table_widget)
+
+        self.setLayout(layout)
+
+
+
+        # Connexion du signal de sélection d'une cellule
+
+        self.table_widget.cellClicked.connect(self.show_commit_details)
+
+
+
+        # Activation du menu contextuel personnalisé
+
+        self.table_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        self.table_widget.customContextMenuRequested.connect(self.show_custom_context_menu)
+
+
+
+        # Afficher les journaux des commits
+
+        self.show_commit_logs()
+
+
+
+    def show_commit_logs(self):
+
+
+
+        with open("download_log.txt", "r") as file:
+
+                self.repo_path = file.read()
+
+
+
+        try:
+
+            result = subprocess.run(['git', 'log'], cwd=self.repo_path, capture_output=True, text=True)
+
+            output = result.stdout.strip()
+
+
+
+            # Diviser le log en blocs de commit
+
+            commit_blocks = output.split('\n\ncommit')
+
+
+
+            # Ajouter chaque bloc de commit à la table des widgets
+
+            for block in commit_blocks:
+
+                lines = block.split('\n')
+
+
+
+                # Ignorer les lignes vides
+
+                lines = [line for line in lines if line.strip() != '']
+
+
+
+                # Récupérer les informations du commit
+
+                sha = lines[0].split(' ')[1]
+
+                author = lines[1].split('Author: ')[1]
+
+                date = lines[2].split('Date:   ')[1]
+
+                message = lines[4]
+
+
+
+                # Ajouter les informations du commit à la table
+
+                row = self.table_widget.rowCount()
+
+                self.table_widget.insertRow(row)
+
+                self.table_widget.setItem(row, 0, QTableWidgetItem(sha))
+
+                self.table_widget.setItem(row, 1, QTableWidgetItem(author))
+
+                self.table_widget.setItem(row, 2, QTableWidgetItem(date))
+
+                self.table_widget.setItem(row, 3, QTableWidgetItem(message))
+
+
+
+                # Redimensionner automatiquement les colonnes pour afficher le contenu complet
+
+                self.table_widget.resizeColumnsToContents()
+
+
+
+        except subprocess.CalledProcessError as e:
+
+            print("Erreur lors de l'affichage des journaux des commits :", e)
+
+
+
+    def show_commit_details(self, row, column):
+
+        # Récupérer le SHA du commit sélectionné
+
+        sha_item = self.table_widget.item(row, 0)
+
+        sha = sha_item.text()
+
+
+
+        try:
+
+            # Exécuter la commande 'git show' pour obtenir le message complet du commit
+
+            result = subprocess.run(['git', 'show', '--quiet', sha], cwd= self.repo_path,capture_output=True, text=True)
+
+            output = result.stdout.strip()
+
+
+
+            # Afficher le message complet du commit dans une fenêtre de message
+
+            msg_box = QMessageBox()
+
+            msg_box.setWindowTitle("Détails du Commit")
+
+            msg_box.setText(output)
+
+            msg_box.exec_()
+
+
+
+        except subprocess.CalledProcessError as e:
+
+            print("Erreur lors de l'affichage des détails du commit :", e)
+
+
+
+    def show_custom_context_menu(self, position):
+
+        # Créer le menu contextuel
+
+        menu = QMenu(self)
+
+
+
+        # Ajouter une action pour l'option de clic droit
+
+        action = QAction("Checkout", self)
+
+        menu.addAction(action)
+
+
+
+        # Connexion du signal triggered pour l'action
+
+        action.triggered.connect(self.handle_custom_context_menu_action)
+
+
+
+        # Afficher le menu contextuel à la position du clic droit
+
+        menu.exec_(self.table_widget.viewport().mapToGlobal(position))
+
+
+
+    def handle_custom_context_menu_action(self):
+
+        # Obtenir la cellule sélectionnée
+
+        selected_cell = self.table_widget.selectedItems()
+
+
+
+        if selected_cell:
+
+            # Récupérer les informations du commit à partir de la cellule sélectionnée
+
+            row = selected_cell[0].row()
+
+            sha_item = self.table_widget.item(row, 0)
+
+            author_item = self.table_widget.item(row, 1)
+
+            date_item = self.table_widget.item(row, 2)
+
+            message_item = self.table_widget.item(row, 3)
+
+
+
+            sha = sha_item.text()
+
+            author = author_item.text()
+
+            date = date_item.text()
+
+            message = message_item.text()
+
+
+
+            # Afficher les informations du commit dans la console
+
+            print("Informations du commit :")
+
+            print("SHA :", sha)
+
+            print("Auteur :", author)
+
+            print("Date :", date)
+
+            print("Message :", message)
+
+            try:
+
+                subprocess.run(['git', 'checkout', sha], cwd=self.repo_path,check=True)
+
+                print(f"Checked out to commit: {sha}")
+
+            except subprocess.CalledProcessError as e:
+
+                print("Error occurred while checking out to commit:", e)
+
+
+
+
+
+class DownloadWidget(QWidget):
+
+    def __init__(self):
+
+        super().__init__()
+
+
+
+        # Création des éléments de l'interface utilisateur
+
+        self.link_line_edit = QLineEdit(self)
+
+        self.destination_line_edit = QLineEdit(self)
+
+        self.browse_button = QPushButton("Parcourir", self)
+
+        self.download_button = QPushButton("Télécharger", self)
+
+
+
+        # Configuration des signaux et des slots
+
+        self.browse_button.clicked.connect(self.browse_directory)
+
+        self.download_button.clicked.connect(self.download_repository)
+
+
+
+        # Configuration du layout
+
+        layout = QVBoxLayout()
+
+        layout.addWidget(QLabel("Lien du référentiel:"))
+
+        layout.addWidget(self.link_line_edit)
+
+        layout.addWidget(QLabel("Destination:"))
+
+        layout.addWidget(self.destination_line_edit)
+
+        layout.addWidget(self.browse_button)
+
+        layout.addWidget(self.download_button)
+
+        self.setLayout(layout)
+
+
+
+    def browse_directory(self):
+
+        directory = QFileDialog.getExistingDirectory(self, "Sélectionner le dossier de destination")
+
+        if directory:
+
+            self.destination_line_edit.setText(directory)
+
+
+
+
+
+    def download_repository(self):
+
+        link = self.link_line_edit.text()
+
+        destination = self.destination_line_edit.text()
+
+        output_file = "download_log.txt"  # Nom du fichier de sortie
+
+
+
+
+
+        with open('repo_remote_link.txt', "w") as file:
+
+            file.write(link)
+
+
+
+        # Télécharge le référentiel en utilisant la commande "git clone"
+
+        try:
+
+            with open(output_file, "w") as file:
+
+                subprocess.run(['git', 'clone', link, destination])
+
+                subprocess.run("git branch --unset-upstream", cwd= destination)
+
+                subprocess.run(f"git branch ----set-upstream-to '{link}'", cwd= destination)
+
+
+
+
+
+
+
+                file.write(destination)
+
+            print("Téléchargement terminé. Les détails ont été enregistrés dans", output_file)
+
+        except subprocess.CalledProcessError as e:
+
+            print("Erreur lors du téléchargement :", e)
+
+
+
+
+
+class CommitWidget(QWidget):
+
+    def __init__(self):
+
+        super().__init__()
+
+
+
+        self.title_line_edit = QLineEdit()
+
+        self.description_text_edit = QTextEdit()
+
+        self.log_label = QLabel()
+
+
+
+        commit_button = QPushButton("Commit", self)
+
+        commit_button.clicked.connect(self.commit_repository)
+
+
+
+        layout = QVBoxLayout()
+
+        layout.addWidget(QLabel("Titre du commit :"))
+
+        layout.addWidget(self.title_line_edit)
+
+        layout.addWidget(QLabel("Description du commit :"))
+
+        layout.addWidget(self.description_text_edit)
+
+        layout.addWidget(commit_button)
+
+        layout.addWidget(QLabel("Log du référentiel :"))
+
+        layout.addWidget(self.log_label)
+
+
+
+        self.setLayout(layout)
+
+
+
+    def commit_repository(self):
+
+        title = self.title_line_edit.text()
+
+        description = self.description_text_edit.toPlainText()
+
+        output_file = "download_log.txt"
+
+
+
+        with open(output_file, "r") as file:
+
+                self.path = file.read()
+
+
+
+        try:
+
+            # Effectue le commit
+
+            subprocess.run(f'git add .', check=True, cwd=self.path)
+
+            subprocess.run(f'git commit -m "{title}" -m "{description}"', check=True, cwd=self.path)
+
+            
+
+            # Affiche le log du référentiel
+
+            result = subprocess.run(['git', 'log', '-1'], capture_output=True, text=True, cwd=self.path)
+
+            log_output = result.stdout
+
+            
+
+            # Enregistre le log dans le fichier
+
+            
+
+            
+
+            self.log_label.setText(log_output)
+
+            print("Commit effectué avec succès. Le log a été enregistré dans", output_file)
+
+        except subprocess.CalledProcessError as e:
+
+            t= "Erreur lors du commit :"+ str(e)
+
+            self.log_label.setText(t)
+
+            print("Erreur lors du commit :", t)
+
+
+
+
+
+class PushWidget(QWidget):
+
+    def __init__(self):
+
+        super().__init__()
+
+
+
+        self.repo_path = ""  # Remplacez par votre propre chemin
+
+        self.remote_link_file = "repo_remote_link.txt"  # Remplacez par votre propre nom de fichier
+
+
+
+        self.remote_link_line_edit = QLineEdit()
+
+        self.result_label = QLabel()
+
+
+
+        push_button = QPushButton("Push", self)
+
+        push_button.clicked.connect(self.push_to_github)
+
+
+
+        layout = QVBoxLayout()
+
+        layout.addWidget(QLabel("Lien du référentiel distant :"))
+
+        layout.addWidget(self.remote_link_line_edit)
+
+        layout.addWidget(push_button)
+
+        layout.addWidget(self.result_label)
+
+
+
+        self.setLayout(layout)
+
+
+
+        # Remplit le champ du lien à partir du contenu du fichier
+
+        self.fill_remote_link()
+
+
+
+    def fill_remote_link(self):
+
+        try:
+
+            with open(self.remote_link_file, "r") as file:
+
+                self.repo_path = file.read().strip()
+
+                self.remote_link_line_edit.setText(self.repo_path)
+
+        except FileNotFoundError:
+
+            print("Le fichier", self.remote_link_file, "n'a pas été trouvé.")
+
+
+
+    def push_to_github(self):
+
+        remote_link = self.remote_link_line_edit.text()
+
+
+
+        pt = ""
+
+        with open( "download_log.txt" , "r") as file :
+
+            pt = file.read()
+
+        
+
+        try:
+
+            result = subprocess.run(['git', 'push', f"{remote_link}" ], cwd = pt, capture_output=True, text=True)
+
+            output = result.stdout.strip()
+
+
+
+            if result.returncode == 0:
+
+                self.result_label.setText("Push réussi.")
+
+                subject = "Test d'e-mail"
+
+                body = "Ceci est un e-mail de test pré-rempli dans le corps."
+
+                recipient = "recipient@example.com"
+
+                open_outlook_mail(subject, body, recipient)
+
+            else:
+
+                error_message = result.stderr.strip()
+
+                QMessageBox.critical(self, "Erreur", error_message)
+
+                print(error_message)
+
+        except subprocess.CalledProcessError as e:
+
+            QMessageBox.critical(self, "Erreur", str(e))
+
+            print(str(e))
+
+
+
+
+
+if __name__ == '__main__':
+
+    app = QApplication(sys.argv)
+
+    main_window = MainWindow()
+
+    main_window.show()
+
+    sys.exit(app.exec_())
+
